@@ -25,6 +25,7 @@ class MainWidget(QWidget):
     def __init__(self, parent: QWidget = None) -> None:
         super().__init__(parent)
         self.training_thread = None
+        self.stop_training_thread_flag = False
         self.main_layout = QGridLayout()
         self.args_widget = ArgsWidget()
         self.subset_widget = SubsetListWidget()
@@ -157,10 +158,13 @@ class MainWidget(QWidget):
 
     def start_training(self) -> None:
         if self.training_thread and self.training_thread.is_alive():
+            self.stop_training_thread_flag = True
             with contextlib.suppress(Exception):
                 requests.get(f"{self.backend_url_input.text()}/stop_training")
             self.begin_training_button.setText("Start Training")
             return
+
+        self.stop_training_thread_flag = False
         validation_errors = self.args_widget.get_validation_errors()
         if validation_errors:
             error_text = "\n".join(validation_errors)
@@ -168,8 +172,16 @@ class MainWidget(QWidget):
             print("Training blocked until extra args are fixed:")
             print(error_text)
             return
-        self.training_thread = Thread(target=self.start_training_thread)
+        self.training_thread = Thread(target=self.start_training_thread, daemon=True)
         self.training_thread.start()
+
+    def sleep_check(self, duration: float) -> bool:
+        """Sleeps for the given duration in small increments, returning False if stop flag is set."""
+        for _ in range(int(duration * 10)):
+            if getattr(self, "stop_training_thread_flag", False):
+                return False
+            sleep(0.1)
+        return not getattr(self, "stop_training_thread_flag", False)
 
     def start_training_thread(self) -> None:
         self.begin_training_button.setText("Stop Training")
@@ -178,10 +190,9 @@ class MainWidget(QWidget):
             while self.queue_widget.elements:
                 queue_file = self.queue_widget.elements[0].queue_file
                 is_checked = self.queue_widget.elements[0].isChecked()
-                self.queue_widget.remove_first_from_queue()
                 if is_checked:
                     self.save_toml(queue_file)
-                if not self.train_helper(url, queue_file):
+                if not self.train_helper(url, queue_file, on_training_start=self.queue_widget.remove_first_from_queue):
                     self.begin_training_button.setText("Start Training")
                     return
         else:
@@ -189,7 +200,7 @@ class MainWidget(QWidget):
             self.train_helper(url, Path("queue_store/temp.toml"))
         self.begin_training_button.setText("Start Training")
 
-    def train_helper(self, url: str, train_toml: Path) -> bool:
+    def train_helper(self, url: str, train_toml: Path, on_training_start=None) -> bool:
         args, dataset_args, train_mode = self.process_toml(train_toml)
         config = json.loads(Path("config.json").read_text())
 
@@ -199,19 +210,29 @@ class MainWidget(QWidget):
             "dataset": dataset_args,
             "accelerate": config.get("accelerate", {}),
         }
-        try:
-            response = requests.post(f"{url}/validate", json=True, data=json.dumps(final_args))
-        except ConnectionError as e:
-            print(e)
-            self.training_error.emit(
-                "Connection Error",
-                f"Failed to connect to the backend at {url}.\n\n"
-                "Please ensure the backend is running and the URL is correct."
-            )
-            return False
-        if response.status_code != 200:
-            print(f"Item Failed: {response.text}")
-            return False
+
+        while True:
+            try:
+                response = requests.post(f"{url}/validate", json=True, data=json.dumps(final_args))
+            except ConnectionError as e:
+                if getattr(self, "retry_on_disconnect", False):
+                    print("Connection failed during validation, retrying in 10 seconds...")
+                    if not self.sleep_check(10.0):
+                        return False
+                    continue
+                else:
+                    print(e)
+                    self.training_error.emit(
+                        "Connection Error",
+                        f"Failed to connect to the backend at {url}.\n\n"
+                        "Please ensure the backend is running and the URL is correct."
+                    )
+                    return False
+            if response.status_code != 200:
+                print(f"Item Failed: {response.text}")
+                return False
+            break
+
         validation_data = response.json()
         if args.get("saving_args", {}).get("tag_occurrence", None):
             folder = args["saving_args"].get("tag_file_location", None)
@@ -227,7 +248,6 @@ class MainWidget(QWidget):
                 Path(folder) if folder else None,
                 args["saving_args"].get("output_name", "output_args"),
             )
-        os.remove(train_toml)
         is_sdxl = str(args.get("general_args").get("sdxl", False))
         is_flux = str(bool(args.get("flux_args")))
         is_anima = str(bool(args.get("anima_args")))
@@ -247,18 +267,52 @@ class MainWidget(QWidget):
             train_params["accelerate_num_processes"] = str(accel.get("num_processes", 2))
             train_params["accelerate_main_process_port"] = str(accel.get("main_process_port", 29500))
 
-        response = requests.get(f"{url}/train", params=train_params)
+        if getattr(self, "retry_on_disconnect", False):
+            while True:
+                try:
+                    response = requests.get(f"{url}/train", params=train_params)
+                    if not response.json().get("training", False):
+                        print(f"Failed to start training, retrying in 10 seconds...")
+                        if not self.sleep_check(10.0):
+                            return False
+                        continue
+                    break
+                except ConnectionError as e:
+                    print("Connection failed when starting training, retrying in 10 seconds...")
+                    if not self.sleep_check(10.0):
+                        return False
+                    continue
+        else:
+            response = requests.get(f"{url}/train", params=train_params)
+
+        if on_training_start:
+            on_training_start()
+        os.remove(train_toml)
         training = True
+
         while training:
-            sleep(5.0)
+            if not self.sleep_check(5.0):
+                return False
             try:
                 response = requests.get(f"{url}/is_training")
             except Exception:
-                print("Connection Failed, assuming training has stopped.")
-                return False
+                if getattr(self, "retry_on_disconnect", False):
+                    print("Connection Failed, retrying in 10 seconds...")
+                    if not self.sleep_check(5.0):
+                        return False
+                    continue
+                else:
+                    print("Connection Failed, assuming training has stopped.")
+                    return False
             if response.status_code != 200:
-                print("Connection Failed, assuming training has stopped.")
-                return False
+                if getattr(self, "retry_on_disconnect", False):
+                    print("Connection Failed, retrying in 10 seconds...")
+                    if not self.sleep_check(5.0):
+                        return False
+                    continue
+                else:
+                    print("Connection Failed, assuming training has stopped.")
+                    return False
             response = response.json()
             if not response["training"]:
                 training = False

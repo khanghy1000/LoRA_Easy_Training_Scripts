@@ -34,6 +34,10 @@ class MainWindow(QMainWindow, QtStyleTools):
         self.tensorboard_action = QAction("Toggle TensorBoard", self)  # Changed text to indicate toggle functionality
         self.widget.menuUtils.addAction(self.tensorboard_action)
         
+        self.retry_connection_action = QAction("Retry Connection on Disconnect", self)
+        self.retry_connection_action.setCheckable(True)
+        self.widget.menuUtils.addAction(self.retry_connection_action)
+
         self.setMinimumWidth(739)
         screen_size = QApplication.screens()[0].size()
         self.setGeometry(
@@ -95,6 +99,9 @@ class MainWindow(QMainWindow, QtStyleTools):
         self.widget.set_train_ti_action.triggered.connect(self.main_widget.set_train_ti)
         self.tensorboard_action.triggered.connect(self.launch_tensorboard)
         self.compact_mode_action.triggered.connect(lambda: self.change_theme())
+        self.retry_connection_action.toggled.connect(
+            lambda checked: setattr(self.main_widget, 'retry_on_disconnect', checked)
+        )
 
 
     def launch_tensorboard(self) -> None:
@@ -178,6 +185,10 @@ class MainWindow(QMainWindow, QtStyleTools):
                 self.tensorboard_process = None
 
     def closeEvent(self, event):
+        # Stop any active training thread
+        if hasattr(self, 'main_widget') and hasattr(self.main_widget, 'stop_training_thread_flag'):
+            self.main_widget.stop_training_thread_flag = True
+
         # Clean up TensorBoard process if it's running
         if hasattr(self, 'tensorboard_process') and self.tensorboard_process is not None:
             print("Shutting down TensorBoard...")
