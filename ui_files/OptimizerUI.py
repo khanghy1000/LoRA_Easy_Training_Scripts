@@ -236,10 +236,19 @@ class Ui_optimizer_ui(object):
 
         self.formLayout.setWidget(0, QFormLayout.FieldRole, self.optimizer_type_selector)
 
+        self.custom_optimizer_enable = QCheckBox(self.optimizer_tab_main)
+        self.custom_optimizer_enable.setObjectName(u"custom_optimizer_enable")
+        self.formLayout.setWidget(1, QFormLayout.LabelRole, self.custom_optimizer_enable)
+
+        self.custom_optimizer_input = LineEditWithHighlight(self.optimizer_tab_main)
+        self.custom_optimizer_input.setObjectName(u"custom_optimizer_input")
+        self.custom_optimizer_input.setEnabled(False)
+        self.formLayout.setWidget(1, QFormLayout.FieldRole, self.custom_optimizer_input)
+
         self.lr_scheduler_label = QLabel(self.optimizer_tab_main)
         self.lr_scheduler_label.setObjectName(u"lr_scheduler_label")
 
-        self.formLayout.setWidget(1, QFormLayout.LabelRole, self.lr_scheduler_label)
+        self.formLayout.setWidget(2, QFormLayout.LabelRole, self.lr_scheduler_label)
 
         self.lr_scheduler_selector = ComboBox(self.optimizer_tab_main)
         self.lr_scheduler_selector.addItem("")
@@ -256,12 +265,12 @@ class Ui_optimizer_ui(object):
         self.lr_scheduler_selector.setObjectName(u"lr_scheduler_selector")
         self.lr_scheduler_selector.setFocusPolicy(Qt.StrongFocus)
 
-        self.formLayout.setWidget(1, QFormLayout.FieldRole, self.lr_scheduler_selector)
+        self.formLayout.setWidget(2, QFormLayout.FieldRole, self.lr_scheduler_selector)
 
         self.loss_type_label = QLabel(self.optimizer_tab_main)
         self.loss_type_label.setObjectName(u"loss_type_label")
 
-        self.formLayout.setWidget(2, QFormLayout.LabelRole, self.loss_type_label)
+        self.formLayout.setWidget(3, QFormLayout.LabelRole, self.loss_type_label)
 
         self.loss_type_selector = ComboBox(self.optimizer_tab_main)
         self.loss_type_selector.addItem(QCoreApplication.translate("optimizer_ui", u"L2", None))
@@ -280,7 +289,7 @@ class Ui_optimizer_ui(object):
         self.loss_type_selector.addItem(QCoreApplication.translate("optimizer_ui", u"MSE Pyramid 2D", None))
         self.loss_type_selector.setObjectName(u"loss_type_selector")
 
-        self.formLayout.setWidget(2, QFormLayout.FieldRole, self.loss_type_selector)
+        self.formLayout.setWidget(3, QFormLayout.FieldRole, self.loss_type_selector)
 
 
         self.gridLayout.addLayout(self.formLayout, 0, 0, 1, 2)
@@ -548,6 +557,14 @@ class Ui_optimizer_ui(object):
 #if QT_CONFIG(tooltip)
         self.optimizer_type_selector.setToolTip(QCoreApplication.translate("optimizer_ui", u"<html><head/><body><p>Optimizer Type is the Optimizer that will be used during training</p></body></html>", None))
 #endif // QT_CONFIG(tooltip)
+#if QT_CONFIG(tooltip)
+        self.custom_optimizer_enable.setToolTip(QCoreApplication.translate("optimizer_ui", u"<html><head/><body><p>Enable custom optimizer input</p></body></html>", None))
+#endif // QT_CONFIG(tooltip)
+        self.custom_optimizer_enable.setText(QCoreApplication.translate("optimizer_ui", u"Custom Optimizer", None))
+#if QT_CONFIG(tooltip)
+        self.custom_optimizer_input.setToolTip(QCoreApplication.translate("optimizer_ui", u"<html><head/><body><p>Enter custom optimizer class (e.g. adv_optm.optim.Prodigy_adv.Prodigy_adv)</p></body></html>", None))
+#endif // QT_CONFIG(tooltip)
+        self.custom_optimizer_input.setPlaceholderText(QCoreApplication.translate("optimizer_ui", u"e.g. adv_optm.optim.Prodigy_adv.Prodigy_adv", None))
 #if QT_CONFIG(tooltip)
         self.lr_scheduler_label.setToolTip(QCoreApplication.translate("optimizer_ui", u"<html><head/><body><p>LR Scheduler is the Scheduler for the learning rate during the training</p></body></html>", None))
 #endif // QT_CONFIG(tooltip)

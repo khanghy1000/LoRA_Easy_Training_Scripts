@@ -40,6 +40,8 @@ class OptimizerWidget(BaseWidget):
 
     def setup_connections(self) -> None:
         self.widget.optimizer_type_selector.currentTextChanged.connect(self.change_optimizer)
+        self.widget.custom_optimizer_enable.clicked.connect(self.toggle_custom_optimizer)
+        self.widget.custom_optimizer_input.textChanged.connect(self.change_custom_optimizer)
         self.widget.lr_scheduler_selector.currentTextChanged.connect(self.change_scheduler)
         self.widget.loss_type_selector.currentTextChanged.connect(self.change_loss_type)
         self.widget.main_lr_input.textChanged.connect(lambda x: self.edit_lr("learning_rate", x))
@@ -171,8 +173,24 @@ class OptimizerWidget(BaseWidget):
                 continue
             self.args["optimizer_args"][name] = value
 
+    @Slot(bool)
+    def toggle_custom_optimizer(self, checked: bool) -> None:
+        self.widget.custom_optimizer_input.setEnabled(checked)
+        self.widget.optimizer_type_selector.setEnabled(not checked)
+        if checked:
+            self.change_custom_optimizer(self.widget.custom_optimizer_input.text())
+        else:
+            self.change_optimizer(self.widget.optimizer_type_selector.currentText())
+
+    @Slot(str)
+    def change_custom_optimizer(self, value: str) -> None:
+        if self.widget.custom_optimizer_enable.isChecked():
+            self.edit_args("optimizer_type", value)
+
     @Slot(str)
     def change_optimizer(self, value: str) -> None:
+        if self.widget.custom_optimizer_enable.isChecked():
+            return
         self.edit_args("optimizer_type", value)
 
     @Slot(str)
@@ -342,9 +360,13 @@ class OptimizerWidget(BaseWidget):
 
         # update element inputs
         optimizer_type = args.get("optimizer_type", self.DEFAULTS["optimizer_type"])
-        self.widget.optimizer_type_selector.setCurrentText(
-            "Came" if len(optimizer_type.split(".")) > 1 else optimizer_type
-        )
+        if self.widget.optimizer_type_selector.findText(optimizer_type) != -1:
+            self.widget.custom_optimizer_enable.setChecked(False)
+            self.widget.optimizer_type_selector.setCurrentText(optimizer_type)
+        else:
+            self.widget.custom_optimizer_enable.setChecked(True)
+            self.widget.custom_optimizer_input.setText(optimizer_type)
+
         if "lr_scheduler_type" in args:
             self.widget.lr_scheduler_selector.setCurrentText(
                 "cosine annealing warm restarts (CAWR)"
@@ -401,7 +423,7 @@ class OptimizerWidget(BaseWidget):
                 self.opt_args[-1].arg_value_input.setText(str(value))
 
         # edit args to match
-        self.change_optimizer(self.widget.optimizer_type_selector.currentText())
+        self.toggle_custom_optimizer(self.widget.custom_optimizer_enable.isChecked())
         # also handles min_lr, num_restarts, poly_power, restart_decay
         self.change_scheduler(self.widget.lr_scheduler_selector.currentText())
         self.change_loss_type(self.widget.loss_type_selector.currentText())
